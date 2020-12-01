@@ -1,17 +1,16 @@
 import * as functions from 'firebase-functions';
 import * as admin from "firebase-admin";
 
-export const getPlanData = functions.https.onRequest(async (req, res) => {
+export const getPlanData = functions.https.onCall(async (data, context) => {
   const planDoc = await admin
     .firestore()
-    .doc(`plans/${req.query.id}`)
+    .doc(`plans/${data.id}`)
     .get();
 
   const plan = planDoc.data();
 
   if (!plan) {
-    res.json({ plan });
-    return;
+    return({ plan });
   }
 
   plan.id = planDoc.id;
@@ -30,7 +29,7 @@ export const getPlanData = functions.https.onRequest(async (req, res) => {
     return phase;
   }));
 
-  res.json({ plan });
+  return({ plan });
 });
 
 const getPlanPhaseSessions = async ({ planId, phaseId }: any) => {
