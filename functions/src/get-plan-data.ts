@@ -14,6 +14,28 @@ export const getPlanData = functions.https.onCall(async (data, context) => {
   }
 
   plan.id = planDoc.id;
+  return {
+    plan: formatPlanData(plan),
+  };
+});
+
+const formatPlanData = (unformatedPlan: any) => {
+  return unformatedPlan;
+};
+
+export const getPlanDataComplex = functions.https.onCall(async (data, context) => {
+  const planDoc = await admin
+    .firestore()
+    .doc(`plans/${data.id}`)
+    .get();
+
+  const plan = planDoc.data();
+
+  if (!plan) {
+    return({ plan });
+  }
+
+  plan.id = planDoc.id;
 
   const phasesSnapshot = await planDoc.ref.collection("phases").get();
 
