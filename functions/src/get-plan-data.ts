@@ -1,17 +1,127 @@
 import * as functions from 'firebase-functions';
 import * as admin from "firebase-admin";
+import { Exercise, ExerciseItem, Plan } from "./types";
 
-export const getPlanData = functions.https.onRequest(async (req, res) => {
+/**
+ * Retrieves all the data of the plan specified by id. This function implements
+ * the Firebase Callable Function mechanism.
+ * @param {Object} data Must be an object containing the id field to search.
+ */
+export const getPlanData = functions.https.onCall(async (data, context) => {
   const planDoc = await admin
     .firestore()
-    .doc(`plans/${req.query.id}`)
+    .doc(`plans/${data.id}`)
+    .get();
+
+  const plan = planDoc.data() as Plan | undefined;
+
+  if (!plan) {
+    return({ plan }); // will return plan as undefined
+  }
+
+  plan.id = planDoc.id;
+
+  return {
+    plan: await fillExercisesData(plan),
+  };
+});
+
+/**
+ * Fills the incomplete exercise data of each block in the plan with the lates
+ * exercise info from the exercises collection
+ * @param {Plan} planWithoutExercisesData Plan data to fill. The data structure
+ * must be well formed.
+ */
+const fillExercisesData = async (planWithoutExercisesData: Plan) => {
+  const phases = await Promise.all((planWithoutExercisesData.phases || []).map(async phase => {
+    const sessions = await Promise.all((phase.sessions || []).map(async session => {
+      const routines = await Promise.all((session.routines || []).map(async routine => { // this returns routines
+        const blocks = await Promise.all(
+          (routine.blocks || []).map(async block => {
+            const exercises = await getExerciseItemsWithExerciseData(block.exercises || []);
+
+            block.exercises = exercises;
+            return block;
+          })); // end promise blocks
+
+        routine.blocks = blocks;
+        return routine;
+      })); // end promise routines
+
+      session.routines = routines;
+      return session;
+    })); // end promise sessions
+
+    phase.sessions = sessions;
+    return phase;
+  })); // end promise phases
+
+  const formatedPlan: Plan = {
+    ...planWithoutExercisesData,
+    phases: phases
+  };
+
+  return formatedPlan;
+};
+
+/**
+ * Adds the incomplete exercise data by querying the firestore
+ * exercises collection.
+ * @param exerciseItems Items to be filled
+ * @returns items with the exercise data
+ */
+const getExerciseItemsWithExerciseData = async (exerciseItems: ExerciseItem[]) => {
+  const results = await Promise
+    .all((exerciseItems || []).map(async (e) => {
+      try {
+        const exerciseDocRef = admin
+          .firestore()
+          .collection("exercises")
+          .doc(e.exerciseRef?.id || "");
+
+        const exerciseDoc = await exerciseDocRef.get();
+        const exercise = exerciseDoc.data() as Exercise;
+        Object.assign(exercise, { id: exerciseDoc?.id });
+
+        return {
+          id: e.id,
+          units: e?.units,
+          unitsType: e?.unitsType,
+          number: e?.number,
+          exerciseRef: {
+            id: exercise.id,
+            description: exercise.description,
+            name: exercise.name,
+            thumbnailUrl: exercise.thumbnailUrl,
+            videoUrl: exercise.videoUrl,
+          },
+        }
+      } catch (error) {
+        functions
+          .logger
+          .log("Catched ERROR: ", error);
+        return {};
+      }
+    }));
+
+    return results as ExerciseItem[];
+};
+
+/**
+ * Retrieves all the plan data with nested subcollections well formated.
+ * @deprecated Stop using this because is difficult to mantain and it's
+ * slower than the actual getPlanData method.
+ */
+export const getPlanDataComplex = functions.https.onCall(async (data, context) => {
+  const planDoc = await admin
+    .firestore()
+    .doc(`plans/${data.id}`)
     .get();
 
   const plan = planDoc.data();
 
   if (!plan) {
-    res.json({ plan });
-    return;
+    return({ plan });
   }
 
   plan.id = planDoc.id;
@@ -30,7 +140,7 @@ export const getPlanData = functions.https.onRequest(async (req, res) => {
     return phase;
   }));
 
-  res.json({ plan });
+  return({ plan });
 });
 
 const getPlanPhaseSessions = async ({ planId, phaseId }: any) => {
@@ -56,7 +166,6 @@ const getPlanPhaseSessions = async ({ planId, phaseId }: any) => {
 
   return sessions;
 };
-
 
 const getSessionRoutines = async ({ planId, phaseId, sessionId }: any) => {
   const routinesSnapshot = await admin
