@@ -74,33 +74,36 @@ const getExerciseItemsWithExerciseData = async (exerciseItems: ExerciseItem[]) =
   const results = await Promise
     .all((exerciseItems || []).map(async (e) => {
       try {
+        let exerciseItem = {
+          id: e.id,
+          units: e?.units,
+          unitsType: e?.unitsType,
+          number: e?.number,
+          exerciseRef: {}
+        };
+
+        // if there's not an exercise ref, shouldn't query it
+        if (!e.exerciseRef?.id) {
+          return exerciseItem
+        }
+
         const exerciseDocRef = admin
           .firestore()
           .collection("exercises")
           .doc(e.exerciseRef?.id || "");
 
         const exerciseDoc = await exerciseDocRef.get();
-        const exercise = exerciseDoc.data() as Exercise;
+        let exercise = exerciseDoc.data() as Exercise;
         Object.assign(exercise, { id: exerciseDoc?.id });
 
-        return {
-          id: e.id,
-          units: e?.units,
-          unitsType: e?.unitsType,
-          number: e?.number,
-          exerciseRef: {
-            id: exercise.id,
-            description: exercise.description,
-            name: exercise.name,
-            thumbnailUrl: exercise.thumbnailUrl,
-            videoUrl: exercise.videoUrl,
-          },
-        }
+        exerciseItem.exerciseRef = exercise;
+
+        return exerciseItem;
       } catch (error) {
         functions
           .logger
           .log("Catched ERROR: ", error);
-        return {};
+        return null;
       }
     }));
 
