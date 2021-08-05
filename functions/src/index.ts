@@ -5,6 +5,7 @@ import * as admin from "firebase-admin";
 admin.initializeApp();
 
 export * from "./get-plan-data";
+export * from "./users";
 /*
 export const addMessage = functions.https.onRequest(async (req, res) => {
   const original = req.query.text;
